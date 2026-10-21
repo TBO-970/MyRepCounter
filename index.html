@@ -1011,7 +1011,7 @@ function viewProfile(){
     '<div class="line2"><span>Rest timer</span><select id="rest-sel" class="sel" style="width:auto" aria-label="Rest timer seconds">'+[30,45,60,90,120,150,180,240].map(s=>'<option value="'+s+'"'+(S.rest===s?' selected':'')+'>'+mmss(s)+'</option>').join('')+'</select></div></div>'+
     '<p class="mut" style="margin:8px 2px 0">Changing units only changes the label. Existing numbers are not converted.</p>'+
     '<h2 class="sec">Your data</h2><div class="stack"><button class="btn" data-act="export-csv">Export CSV</button><button class="btn" data-act="export-json">Backup everything</button><button class="btn" data-act="restore">Restore from backup</button>'+(hasSamples()?'<button class="btn" data-act="clear-samples">Clear sample data</button>':'')+'<button class="btn dng" data-act="wipe">Delete all data</button></div>'+
-    '<p class="mut" style="margin:12px 2px 0">Everything is stored on this device only. Make a backup now and then.</p>';
+    '<p class="mut" style="margin:12px 2px 0">Everything is stored on this device only. Make a backup now and then.<br><br><strong>By Coach Bin Obood</strong></p>';
 }
 
 /* ---------- workout editor ---------- */
