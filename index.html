@@ -133,6 +133,30 @@ h2.sec{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing
 .tab[aria-selected=true]{color:var(--accent)}
 #toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(92px + env(safe-area-inset-bottom,0px));background:#e9eef0;color:#111;padding:10px 16px;border-radius:999px;font-weight:600;z-index:70;font-size:14px;max-width:90vw;text-align:center}
 
+/* Coach */
+@media (max-width:340px){.sh,.set{grid-template-columns:30px minmax(34px,1fr) 62px 62px 34px}}
+.cobar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--surface-2);font-size:12px}
+.cobar .ct{font:700 10px var(--font-ui);letter-spacing:.09em;text-transform:uppercase;color:var(--accent)}
+.cobar .cv{font-weight:700;color:var(--fg);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cobar .why{color:var(--muted);flex:1;min-width:130px}
+.cobar .btn.sm{height:30px;font-size:13px;padding:0 10px;flex:none}
+.tg{font:700 10px var(--font-ui);color:var(--accent);background:rgba(44,200,216,.16);border-radius:6px;padding:2px 4px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.bdg{display:inline-block;font:700 10px var(--font-ui);letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px}
+.bdg.up{background:rgba(76,195,138,.16);color:var(--good)}
+.bdg.flat{background:rgba(240,176,74,.16);color:var(--warn)}
+.bdg.down{background:rgba(239,100,97,.16);color:var(--danger)}
+.crow{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);width:100%;text-align:left}
+.crow:last-child{border-bottom:0}
+.cgrow{flex:1;min-width:0}
+.cgrow b{display:block;font-size:15px;overflow-wrap:anywhere}
+.cgrow small{display:block;font-size:12px;color:var(--muted)}
+.carr{text-align:right;flex:none;font-variant-numeric:tabular-nums;font-size:13px;line-height:1.6}
+.carr b{font-weight:700;color:var(--accent);white-space:nowrap}
+.gbar{height:7px;border-radius:4px;background:var(--surface-2);overflow:hidden;margin-top:7px}
+.gbar i{display:block;height:100%;background:var(--accent)}
+.gbar i.low{background:var(--warn)}
+.clbl{display:block;font:700 11px var(--font-ui);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:4px 0 4px}
+
 /* Stats and profile */
 .tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .tile{padding:12px 14px}
@@ -207,7 +231,9 @@ pause:'<path d="M8 5v14M16 5v14" stroke-width="3.2"/>',
 search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
 right:'<path d="M9 6l6 6-6 6"/>',
 left:'<path d="M15 6l-6 6 6 6"/>',
-minus:'<path d="M5 12h14"/>'};
+minus:'<path d="M5 12h14"/>',
+coach:'<path d="M4 17l5-5 4 4 7-8"/><path d="M14 8h6v6"/>',
+gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9L7 7M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>'};
 const ic=(n,s=22)=>'<svg viewBox="0 0 24 24" width="'+s+'" height="'+s+'" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICONS[n]+'</svg>';
 
 /* ---------- data ---------- */
@@ -240,7 +266,7 @@ function seedRoutines(){
 }
 function defaults(){
   return {units:'kg',rest:90,exercises:LIB.flatMap(([g,l])=>l.map(n=>({id:slug(n),name:n,group:g}))),
-    workouts:seedWorkouts(),routines:seedRoutines(),bw:[],active:null};
+    workouts:seedWorkouts(),routines:seedRoutines(),bw:[],active:null,prog:{},rng:{},coach:{inc:null,lo:null,hi:null,setsPerWk:10}};
 }
 const KEY='replog.v1';
 let S=null;
@@ -249,8 +275,11 @@ function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 let saveT=0;const saveSoon=()=>{clearTimeout(saveT);saveT=setTimeout(save,300);};
 function migrate(){
   const d=defaults();
-  S=Object.assign({units:'kg',rest:90,exercises:[],workouts:[],routines:[],bw:[],active:null},S||{});
+  S=Object.assign({units:'kg',rest:90,exercises:[],workouts:[],routines:[],bw:[],active:null,prog:{},rng:{},coach:{inc:null,lo:null,hi:null,setsPerWk:10}},S||{});
   if(!S.exercises.length)S.exercises=d.exercises;
+  if(!S.prog)S.prog={};
+  if(!S.rng)S.rng={};
+  S.coach=Object.assign({inc:null,lo:null,hi:null,setsPerWk:10},S.coach||{});
 }
 const exById=id=>S.exercises.find(e=>e.id===id);
 const exName=id=>{const e=exById(id);return e?e.name:id;};
@@ -299,6 +328,147 @@ function setsFor(exId,count,excl){
   if(!last.length)return blankSets(count||3);
   const n=count||last.length;
   return Array.from({length:n},(_,k)=>{const l=last[k]||last[last.length-1];return {w:l.w,r:l.r,done:false,drop:!!l.drop};});
+}
+
+/* ---------- progressive overloading coach ---------- */
+const parseAuto=v=>{const s=String(v==null?'':v).trim().toLowerCase().replace(',','.');if(!s||s==='auto')return null;const n=Number(s);return isFinite(n)&&n>0?n:null;};
+const round2=n=>Math.round(Number(n)*100)/100;
+function coach(){
+  if(!S.coach)S.coach={inc:null,lo:null,hi:null,setsPerWk:10};
+  if(!S.coach.setsPerWk)S.coach.setsPerWk=10;
+  return S.coach;
+}
+function progOf(exId){
+  const o=(S.prog&&S.prog[exId])||{};
+  return {mode:o.mode||'auto',inc:o.inc!=null?o.inc:null,lo:o.lo!=null?o.lo:null,hi:o.hi!=null?o.hi:null};
+}
+function isCardio(exId){const e=exById(exId);return !!(e&&e.group==='Cardio');}
+/* rep range inferred from the last session, then locked so it stays stable as you progress */
+function autoRange(exId){
+  const ss=sessions(exId);
+  if(!ss.length)return null;
+  const rs=ss[0].sets.filter(s=>!s.drop&&Number(s.r)>0).map(s=>Number(s.r));
+  if(!rs.length)return null;
+  let mx=0;rs.forEach(r=>{if(r>mx)mx=r;});
+  mx=Math.max(1,mx);
+  return {lo:mx,hi:mx+2};
+}
+function rangeOf(exId){
+  const p=progOf(exId),c=coach();
+  let lo=p.lo!=null?p.lo:null,hi=p.hi!=null?p.hi:null;
+  if(lo==null&&c.lo!=null)lo=c.lo;
+  if(hi==null&&c.hi!=null)hi=c.hi;
+  if((lo==null||hi==null)&&S.rng&&S.rng[exId]){
+    if(lo==null)lo=S.rng[exId].lo;
+    if(hi==null)hi=S.rng[exId].hi;
+  }
+  if(lo==null||hi==null){
+    const inf=autoRange(exId);
+    if(inf){
+      if(lo==null)lo=inf.lo;
+      if(hi==null)hi=inf.hi;
+      const locked=(S.rng&&S.rng[exId])||null;
+      if(!locked&&p.mode!=='off'&&!(c.lo!=null&&c.hi!=null)){
+        if(!S.rng)S.rng={};
+        S.rng[exId]={lo:lo,hi:hi};
+        saveSoon();
+      }
+    }
+  }
+  if(lo==null)lo=8;
+  if(hi==null)hi=Math.max(lo+2,12);
+  if(hi<lo)hi=lo;
+  return {lo,hi};
+}
+function defaultInc(exId,w){
+  const c=coach();if(c.inc!=null)return c.inc;
+  if(S.units==='lb')return w<25?2:w<175?5:10;
+  return w<12?1:w<80?2.5:5;
+}
+/* per-session top set for an exercise, newest first */
+function analyze(exId,excl){
+  const ses=[];
+  for(const x of sessions(exId)){
+    if(excl&&x.w.id===excl)continue;
+    const sets=x.sets.filter(s=>s.done&&!s.drop&&Number(s.r)>0&&Number(s.w)>0);
+    if(!sets.length)continue;
+    let top=sets[0];
+    sets.forEach(s=>{if(Number(s.w)>Number(top.w)||(Number(s.w)===Number(top.w)&&Number(s.r)>Number(top.r)))top=s;});
+    ses.push({t:x.w.start,w:Number(top.w),r:Number(top.r),n:sets.length,
+      vol:sets.reduce((a,s)=>a+Number(s.w)*Number(s.r),0),
+      sets:sets.map(s=>({w:Number(s.w),r:Number(s.r)}))});
+  }
+  return ses;
+}
+/* the coach: what to lift next time for one exercise */
+function coachAdvice(exId,excl){
+  if(isCardio(exId))return {state:'na'};
+  const p=progOf(exId),rg=rangeOf(exId),ses=analyze(exId,excl);
+  if(!ses.length)return {state:'new',ses:[],lo:rg.lo,hi:rg.hi};
+  if(p.mode==='off')return {state:'off',ses,lo:rg.lo,hi:rg.hi};
+  const cur=ses[0],prev=ses[1];
+  const inc=p.inc!=null?p.inc:defaultInc(exId,cur.w);
+  const mode=p.mode==='linear'?'linear':'double';
+  const allHit=cur.sets.every(s=>s.r>=rg.hi);
+  let flat=0;for(let i=1;i<ses.length;i++){if(ses[i].w===cur.w)flat++;else break;}
+  let state='on track';
+  if(prev&&cur.w>prev.w)state='progressing';
+  else if(prev&&cur.w<prev.w)state='regressed';
+  else if(prev&&cur.r>prev.r)state='on track';
+  else if(prev)state='stalled';
+  let w=cur.w,r=cur.r,kind='hold',why='';
+  if(mode==='double'){
+    if(allHit){kind='increase';w=round2(cur.w+inc);r=rg.lo;why='Every set hit '+rg.hi+' reps — add '+fmtN(inc)+' '+S.units+' next time';}
+    else if(cur.r>=rg.hi){kind='reps';w=cur.w;r=rg.hi;why='Pull the remaining sets up to '+rg.hi+' reps, then add weight';}
+    else if(prev&&Math.abs(prev.w-cur.w)<0.01&&cur.r<rg.lo&&cur.r<prev.r){kind='deload';w=round2(Math.max(1,Math.round(cur.w*0.9/0.5)*0.5));r=rg.lo;why='Reps dropped at the same weight — deload to '+fmtN(w)+' '+S.units;}
+    else{kind='reps';w=cur.w;r=Math.min(cur.r+1,rg.hi);why='Add a rep: '+fmtN(w)+' '+S.units+' × '+r;}
+  }else{
+    if(cur.r>=rg.lo){kind='increase';w=round2(cur.w+inc);r=Math.min(Math.max(cur.r,rg.lo),rg.hi);why='Add '+fmtN(inc)+' '+S.units+' and hold '+r+' reps';}
+    else{kind='reps';w=cur.w;r=Math.min(cur.r+1,rg.hi);why='Missed the target reps — hold the weight and rebuild';}
+  }
+  if(state==='stalled'){
+    const n=flat+1;
+    why=(kind==='increase'?'No weight change in '+n+' sessions — add '+fmtN(inc)+' '+S.units:'No weight change in '+n+' sessions — '+why);
+  }
+  return {state,kind,why,w,r,cur:{w:cur.w,r:cur.r},inc,lo:rg.lo,hi:rg.hi,flat,ses};
+}
+/* every exercise the coach can speak about, most urgent first */
+function coachRows(){
+  const ids=[];
+  for(const w of S.workouts)for(const it of w.items)if(!ids.includes(it.exId))ids.push(it.exId);
+  const out=[];
+  for(const id of ids){
+    const a=coachAdvice(id);
+    if(!a||a.state==='new'||a.state==='off'||a.state==='na')continue;
+    out.push({id,a});
+  }
+  const rank={regressed:0,stalled:1,'on track':2,progressing:3};
+  out.sort((x,y)=>(rank[x.a.state]-rank[y.a.state])||(y.a.cur.w-x.a.cur.w));
+  return out;
+}
+/* sets and volume per muscle group over the last few weeks */
+function groupStats(days){
+  const from=Date.now()-days*DAY,g={};
+  for(const w of S.workouts){
+    if(w.start<from)continue;
+    for(const it of w.items){
+      const e=exById(it.exId),grp=e?e.group:'Other';
+      if(grp==='Cardio')continue;
+      g[grp]=g[grp]||{sets:0,vol:0};
+      for(const s of it.sets)if(s.done&&Number(s.r)>0){g[grp].sets++;g[grp].vol+=Number(s.w)*Number(s.r);}
+    }
+  }
+  return g;
+}
+function openExSettings(exId){
+  const p=progOf(exId),rg=rangeOf(exId),ex=exById(exId)||{name:exId,group:''};
+  openModal('<h3>'+esc(ex.name)+' · progression</h3>'+
+    '<label class="clbl">Method</label><select class="fld" id="es-mode">'+[['auto','Auto (double progression)'],['double','Double progression'],['linear','Linear'],['off','Off (no suggestions)']].map(([v,l])=>'<option value="'+v+'"'+(p.mode===v?' selected':'')+'>'+l+'</option>').join('')+'</select>'+
+    '<label class="clbl">Weight step ('+S.units+')</label><input class="fld" id="es-inc" type="text" inputmode="decimal" value="'+(p.inc!=null?p.inc:'auto')+'">'+
+    '<label class="clbl">Rep range (low – high)</label><div class="inrow"><input class="fld" id="es-lo" type="text" inputmode="numeric" value="'+(p.lo!=null?p.lo:'auto')+'"><input class="fld" id="es-hi" type="text" inputmode="numeric" value="'+(p.hi!=null?p.hi:'auto')+'"></div>'+
+    '<p class="mut" style="margin:0">Leave "auto" to follow your history. Currently using '+rg.lo+'–'+rg.hi+' reps.</p>'+
+    '<button class="btn pri" data-act="es-save" data-id="'+esc(exId)+'">Save</button>'+
+    '<button class="btn" data-act="modal-close">Cancel</button>');
 }
 
 /* ---------- ui state ---------- */
@@ -357,13 +527,13 @@ function lineChart(pts){
 }
 
 /* ---------- tabs and views ---------- */
-const TABS=[['log','Log','log'],['routines','Routines','dumbbell'],['stats','Statistics','bars'],['profile','Profile','person']];
+const TABS=[['log','Log','log'],['routines','Routines','dumbbell'],['coach','Coach','coach'],['stats','Statistics','bars'],['profile','Profile','person']];
 function renderTabs(){
   $('#tabs').innerHTML=TABS.map(([k,l,i])=>'<button class="tab" role="tab" aria-selected="'+(tab===k)+'" data-act="tab" data-v="'+k+'">'+ic(i,24)+'<span>'+l+'</span></button>').join('');
 }
 function renderView(){
   const v=$('#view');
-  v.innerHTML=({log:viewLog,routines:viewRoutines,stats:viewStats,profile:viewProfile})[tab]();
+  v.innerHTML=({log:viewLog,routines:viewRoutines,coach:viewCoach,stats:viewStats,profile:viewProfile})[tab]();
 }
 function itemLines(w){
   const out=[];
@@ -381,6 +551,8 @@ function viewLog(){
   const list=[...S.workouts].sort((a,b)=>b.start-a.start);
   let h='<div class="topbar"><button class="lnk" data-act="log-edit">'+(logEdit?'Done':'Edit')+'</button><button class="ib" data-act="new" aria-label="New workout">'+ic('plus',28)+'</button></div><h1 class="big">Log</h1>';
   if(S.active)h+='<button class="banner resume" data-act="resume"><span><b>Workout in progress</b><br><small>Started '+fmtTime(S.active.start)+' · '+S.active.items.length+' exercises</small></span><span class="lnk">Resume</span></button>';
+  const crows=coachRows();
+  if(crows.length)h+='<button class="banner" data-act="coach-go"><span><b>Coach</b><br><small>'+crows.length+' exercise'+(crows.length===1?'':'s')+' with a next target</small></span><span class="lnk">View</span></button>';
   if(hasSamples())h+='<div class="banner"><span>These are sample workouts so you can try the charts.</span><button class="lnk" data-act="clear-samples">Clear</button></div>';
   if(!list.length)h+='<div class="empty">No workouts yet.<br>Tap + to log your first one.</div>';
   const counts={};list.forEach(w=>{const k=fmtMonth(w.start);counts[k]=(counts[k]||0)+1;});
@@ -404,6 +576,34 @@ function viewRoutines(){
     h+='<div class="card" style="padding:14px"><div class="wt"><h3 style="margin:0;font-size:19px">'+esc(r.name)+'</h3><button class="lnk" data-act="edit-routine" data-id="'+r.id+'">Edit</button></div><ul style="list-style:none;padding:0;margin:6px 0 12px">'+lines.map(l=>'<li style="padding:1px 0">'+esc(l)+'</li>').join('')+'</ul><button class="btn sm pri" data-act="start-routine" data-id="'+r.id+'">Start</button></div>';
   }
   return h+'</div>';
+}
+function coachRow(r){
+  const a=r.a,ex=exById(r.id)||{name:r.id,group:''};
+  const cls=a.state==='progressing'?'up':(a.state==='on track'?'flat':'down');
+  return '<button class="crow" data-act="co-open" data-id="'+esc(r.id)+'"><span class="cgrow"><b>'+esc(ex.name)+'</b><small>'+esc(ex.group)+' · '+esc(a.why)+'</small></span><span class="carr"><span class="bdg '+cls+'">'+esc(a.state)+'</span><br><b>'+fmtN(a.cur.w)+' → '+fmtN(a.w)+'</b> '+esc(S.units)+' × '+a.r+'</span></button>';
+}
+function balanceHtml(){
+  const c=coach(),g=groupStats(28),target=Math.max(4,c.setsPerWk||10)*4;
+  const keys=Object.keys(g).sort((a,b)=>g[a].sets-g[b].sets);
+  if(!keys.length)return '<div class="empty">No sets logged in the last 4 weeks.</div>';
+  return '<div class="card">'+keys.map(k=>{
+    const pct=Math.min(100,g[k].sets/target*100),low=g[k].sets<target*0.7;
+    return '<div style="padding:12px 14px;border-bottom:1px solid var(--line)"><div style="display:flex;justify-content:space-between;gap:10px"><b>'+esc(k)+'</b><span class="mut" style="font-variant-numeric:tabular-nums">'+g[k].sets+' sets · '+kfmt(g[k].vol)+' '+esc(S.units)+'</span></div><div class="gbar"><i class="'+(low?'low':'')+'" style="width:'+pct.toFixed(0)+'%"></i></div></div>';
+  }).join('')+'</div><p class="mut" style="margin:8px 2px 0">Target '+c.setsPerWk+' sets per muscle group per week. Orange bars are below 70% of target.</p>';
+}
+function viewCoach(){
+  let h='<div class="topbar"><span></span><button class="ib" data-act="coach-settings" aria-label="Coach settings">'+ic('gear',24)+'</button></div><h1 class="big">Coach</h1>';
+  if(!S.workouts.length)return h+'<div class="empty">Log a few workouts and the coach will tell you exactly what to lift next time.</div>';
+  const rows=coachRows();
+  if(!rows.length)return h+'<div class="empty">Not enough history yet. The coach needs at least one logged set per exercise.</div>';
+  let up=0,tr=0,bad=0;
+  rows.forEach(r=>{if(r.a.state==='progressing')up++;else if(r.a.state==='on track')tr++;else bad++;});
+  h+='<div class="tiles"><div class="card tile"><b>'+up+'</b><span>Progressing</span></div><div class="card tile"><b>'+tr+'</b><span>On track</span></div><div class="card tile"><b>'+bad+'</b><span>Need work</span></div><div class="card tile"><b>'+rows.length+'</b><span>Tracked</span></div></div>';
+  const att=rows.filter(r=>r.a.state==='stalled'||r.a.state==='regressed');
+  h+='<h2 class="sec">Needs attention</h2>'+(att.length?'<div class="card">'+att.map(coachRow).join('')+'</div>':'<div class="empty">Nothing is stalled. Keep logging and keep climbing.</div>');
+  h+='<h2 class="sec">Next session targets</h2><div class="card">'+rows.map(coachRow).join('')+'</div>';
+  h+='<h2 class="sec">Muscle balance · last 4 weeks</h2>'+balanceHtml();
+  return h;
 }
 function viewStats(){
   const now=Date.now();
@@ -475,14 +675,21 @@ function itemHtml(it,i,w){
   const prev=lastSets(it.exId,w.id),best=priorBest(it.exId,w.id),items=w.items;
   const ssPrev=!!it.ss&&i>0&&items[i-1].ss===it.ss,ssNext=!!it.ss&&i<items.length-1&&items[i+1].ss===it.ss;
   let maxW=0,maxK=-1;it.sets.forEach((s,k)=>{if(s.done&&Number(s.w)>maxW){maxW=Number(s.w);maxK=k;}});
+  const adv=cardio?null:coachAdvice(it.exId,w.id);
+  const openK=it.sets.findIndex(s=>!s.done);
+  const coBar=!adv?'':(adv.state==='new'||adv.state==='off'
+    ?'<div class="cobar"><span class="ct">Coach</span><span class="why">'+(adv.state==='off'?'Suggestions are off for this exercise.':'No history yet — log this exercise to unlock targets.')+'</span></div>'
+    :'<div class="cobar"><span class="ct">Coach</span><span class="cv">'+fmtN(adv.w)+' '+esc(S.units)+' × '+adv.r+'</span><span class="why">'+esc(adv.why)+'</span><button class="btn sm pri" data-act="co-apply" data-i="'+i+'">Fill</button></div>');
   let n=0;
   const rows=it.sets.map((s,k)=>{
     if(!s.drop)n++;
     const p=prev[k],ptxt=p?fmtN(p.w)+'×'+p.r:'–',isPR=best>0&&k===maxK&&maxW>best;
-    return '<div class="set'+(s.done?' done':'')+'" data-i="'+i+'" data-s="'+k+'"><button class="sn'+(s.drop?' drop':'')+'" data-act="set-drop" aria-label="Toggle dropset">'+(s.drop?'D':n)+'</button><span class="prev"><span>'+ptxt+'</span>'+(isPR?'<b class="pr">PR</b>':'')+'</span><input class="num" data-f="w" type="text" inputmode="decimal" placeholder="0" value="'+esc(s.w)+'" aria-label="'+(cardio?'Distance':'Weight')+'"><input class="num" data-f="r" type="text" inputmode="numeric" placeholder="0" value="'+esc(s.r)+'" aria-label="'+(cardio?'Minutes':'Reps')+'"><button class="chk" data-act="set-done" aria-label="Mark set done">'+ic('check',20)+'</button></div>';
+    const tgt=(adv&&adv.w&&k===openK&&openK>=0)?'<button class="tg" data-act="co-set" data-i="'+i+'" data-s="'+k+'" aria-label="Use suggested set">'+fmtN(adv.w)+'×'+adv.r+'</button>':'';
+    return '<div class="set'+(s.done?' done':'')+'" data-i="'+i+'" data-s="'+k+'"><button class="sn'+(s.drop?' drop':'')+'" data-act="set-drop" aria-label="Toggle dropset">'+(s.drop?'D':n)+'</button><span class="prev"><span>'+ptxt+'</span>'+(isPR?'<b class="pr">PR</b>':'')+tgt+'</span><input class="num" data-f="w" type="text" inputmode="decimal" placeholder="0" value="'+esc(s.w)+'" aria-label="'+(cardio?'Distance':'Weight')+'"><input class="num" data-f="r" type="text" inputmode="numeric" placeholder="0" value="'+esc(s.r)+'" aria-label="'+(cardio?'Minutes':'Reps')+'"><button class="chk" data-act="set-done" aria-label="Mark set done">'+ic('check',20)+'</button></div>';
   }).join('');
   return '<div class="card ex'+(it.ss?' ss':'')+(ssPrev?' ss-cont':'')+(ssNext?' ss-more':'')+'" data-i="'+i+'">'+(it.ss&&!ssPrev?'<div class="sslabel">Superset</div>':'')+
     '<div class="exh"><button class="exname" data-act="ex-hist" data-i="'+i+'">'+esc(ex.name)+'</button><span class="grp">'+esc(ex.group)+'</span><button class="ib" style="width:36px;height:36px" data-act="ex-menu" data-i="'+i+'" aria-label="Exercise options">'+ic('dots',20)+'</button></div>'+
+    coBar+
     '<div class="sh"><span>SET</span><span>PREVIOUS</span><span>'+(cardio?'KM':S.units.toUpperCase())+'</span><span>'+(cardio?'MIN':'REPS')+'</span><span></span></div>'+rows+
     '<button class="addset" data-act="set-add" data-i="'+i+'">+ Add set</button></div>';
 }
@@ -652,6 +859,7 @@ resume:()=>openEditor(S.active,'active'),
   const i=+b.dataset.i,w=ed.w,it=w.items[i];
   actionSheet(exName(it.exId),[
     {label:'Exercise history',fn:()=>ACT['ex-hist']({dataset:{i}})},
+    {label:'Progression settings',fn:()=>openExSettings(it.exId)},
     {label:'Repeat last set ×N',fn:()=>{
       openModal('<h3>Repeat last set</h3><input class="fld" id="rp-n" type="text" inputmode="numeric" value="2" aria-label="Times"><button class="btn pri" data-act="rp-go" data-i="'+i+'">Repeat</button><button class="btn" data-act="modal-close">Cancel</button>');}},
     {label:'Remove last set',fn:()=>{if(it.sets.length>1){it.sets.pop();save();renderEditor();}else toast('An exercise needs at least one set');}},
@@ -662,6 +870,70 @@ resume:()=>openEditor(S.active,'active'),
 'rp-go':b=>{
   const n=Math.max(1,Math.min(20,parseInt($('#rp-n').value,10)||1)),it=ed.w.items[+b.dataset.i],l=it.sets[it.sets.length-1];
   closeModal();for(let k=0;k<n;k++)it.sets.push({w:l?l.w:'',r:l?l.r:'',done:false,drop:false});save();renderEditor();
+},
+/* coach */
+'coach-go':()=>{tab='coach';renderTabs();renderView();scrollTo(0,0);},
+'coach-settings':()=>{
+  const c=coach();
+  openModal('<h3>Coach settings</h3>'+
+    '<label class="clbl">Default weight step ('+S.units+')</label><input class="fld" id="cs-inc" type="text" inputmode="decimal" value="'+(c.inc!=null?c.inc:'auto')+'">'+
+    '<label class="clbl">Default rep range (low – high)</label><div class="inrow"><input class="fld" id="cs-lo" type="text" inputmode="numeric" value="'+(c.lo!=null?c.lo:'auto')+'"><input class="fld" id="cs-hi" type="text" inputmode="numeric" value="'+(c.hi!=null?c.hi:'auto')+'"></div>'+
+    '<label class="clbl">Target sets per muscle group per week</label><input class="fld" id="cs-sets" type="text" inputmode="numeric" value="'+(c.setsPerWk||10)+'">'+
+    '<p class="mut" style="margin:0">The coach compares every exercise with your recent sessions and suggests the next weight and reps. Double progression: hit the top of your rep range on every set, then add weight and drop back to the bottom of the range.</p>'+
+    '<button class="btn pri" data-act="cs-save">Save</button>'+
+    (Object.keys(S.prog||{}).length?'<button class="btn dng" data-act="cs-reset">Reset per-exercise settings</button>':'')+
+    '<button class="btn" data-act="modal-close">Cancel</button>');
+},
+'cs-save':()=>{
+  const c=coach();
+  c.inc=parseAuto($('#cs-inc').value);c.lo=parseAuto($('#cs-lo').value);c.hi=parseAuto($('#cs-hi').value);
+  const n=Number($('#cs-sets').value);c.setsPerWk=n>0?Math.min(60,Math.round(n)):10;
+  save();closeModal();renderView();toast('Coach settings saved');
+},
+'cs-reset':()=>{S.prog={};S.rng={};save();closeModal();renderView();toast('Per-exercise settings reset');},
+'co-open':b=>{
+  const id=b.dataset.id,a=coachAdvice(id);
+  if(!a||a.state==='new'){toast('No history for this exercise');return;}
+  const ex=exById(id)||{name:id,group:''};
+  const hist=a.ses?a.ses.slice(0,6).map(s=>'<div class="hist"><span>'+fmtShort(s.t)+'</span><span>'+fmtN(s.w)+' '+esc(S.units)+' × '+s.r+' · '+s.n+' sets</span></div>').join(''):'';
+  openModal('<h3>'+esc(ex.name)+'</h3>'+
+    (a.state==='off'?'<div class="cobar"><span class="ct">Coach</span><span class="why">Suggestions are off for this exercise.</span></div>'
+      :'<div class="cobar"><span class="ct">Next</span><span class="cv">'+fmtN(a.w)+' '+esc(S.units)+' × '+a.r+'</span><span class="why">'+esc(a.why)+'</span></div>')+
+    (hist?'<div style="margin-top:4px">'+hist+'</div>':'')+
+    (S.active&&a.state!=='off'?'<button class="btn pri" data-act="co-use" data-id="'+esc(id)+'">Add to current workout</button>':'')+
+    '<button class="btn" data-act="es-open" data-id="'+esc(id)+'">Progression settings</button>'+
+    '<button class="btn" data-act="modal-close">Close</button>');
+},
+'co-use':b=>{
+  const id=b.dataset.id,a=coachAdvice(id);
+  if(!a||!a.w){toast('No target yet');return;}
+  if(!S.active){toast('Start a workout first');return;}
+  const n=Math.max(2,Math.min(6,a.ses&&a.ses[0]?a.ses[0].n:3));
+  S.active.items.push({id:uid(),exId:id,ss:null,sets:Array.from({length:n},()=>({w:a.w,r:a.r,done:false,drop:false}))});
+  save();closeModal();toast(exName(id)+' added to your workout');
+},
+'co-apply':b=>{
+  const it=ed.w.items[+b.dataset.i],a=coachAdvice(it.exId,ed.w.id);
+  if(!a||!a.w){toast('No suggestion yet');return;}
+  let n=0;
+  it.sets.forEach(s=>{if(!s.done){s.w=a.w;s.r=a.r;n++;}});
+  if(!n){toast('Every set is already logged');return;}
+  save();renderEditor();toast('Filled '+n+' set'+(n===1?'':'s')+' with '+fmtN(a.w)+' '+S.units+' × '+a.r);
+},
+'co-set':b=>{
+  const r=b.closest('.set');if(!r)return;
+  const it=ed.w.items[+r.dataset.i],s=it.sets[+r.dataset.s],a=coachAdvice(it.exId,ed.w.id);
+  if(!a||!a.w)return;
+  s.w=a.w;s.r=a.r;save();renderEditor();
+},
+'es-open':b=>openExSettings(b.dataset.id),
+'es-save':b=>{
+  const id=b.dataset.id,o={mode:$('#es-mode').value};
+  const inc=parseAuto($('#es-inc').value),lo=parseAuto($('#es-lo').value),hi=parseAuto($('#es-hi').value);
+  if(inc!=null)o.inc=inc;
+  if(lo!=null)o.lo=lo;
+  if(hi!=null)o.hi=hi;
+  S.prog[id]=o;save();closeModal();renderView();toast('Progression updated');
 },
 /* modal */
 'modal-close':(b,e)=>{if(e.target===b||b.tagName==='BUTTON')closeModal();},
@@ -744,7 +1016,7 @@ restore:()=>openModal('<h3>Restore from backup</h3><p class="mut" style="margin:
   }catch(e){toast('That does not look like a backup');}
 },
 wipe:()=>confirmBox('Delete all workouts, routines and settings?','Delete everything',()=>{
-  S=null;migrate();S.workouts=[];S.routines=[];save();T.on=false;renderTimer();renderView();toast('All data deleted');})
+  S=null;migrate();S.workouts=[];S.routines=[];S.prog={};S.rng={};S.coach={inc:null,lo:null,hi:null,setsPerWk:10};save();T.on=false;renderTimer();renderView();toast('All data deleted');})
 };
 document.addEventListener('click',e=>{
   const b=e.target.closest('[data-act]');if(!b)return;
